@@ -3,8 +3,8 @@ module Speed
 
   class << self
 
-    def insert(count = 100)
-      Rails.logger.info 'INSERT TEST'
+    def insert_test(count = 10)
+      Rails.logger.info 'INSERT:'
       policy = policy_data
       Benchmark.bm(5) do |x|
         x.report('MONGO') { count.times { Mongo::Policy.create(data: policy) } }
@@ -12,12 +12,44 @@ module Speed
       end
     end
 
-    def update(count = 10)
+    def update_test(count = 10)
+      Rails.logger.info 'UPDATE:'
+      offset  = rand(User.count)
+      user_id = User.offset(offset).first.id
 
+      Benchmark.bm(5) do |x|
+        x.report('MONGO') { count.times {
+          policy = Mongo::Policy.where(user_id: user_id).first
+          policy.data['coverages']['total_sum'] = rand(1000)
+          policy.save
+        } }
+        x.report('MARIA') { count.times {
+          policy = Policy.where(user_id: user_id).first
+          policy.data['coverages']['total_sum'] = rand(1000)
+          policy.save
+        } }
+      end
     end
 
-    def select(count = 100)
-      Rails.logger.info 'SELECT TEST'
+    def update_by_query_test(count = 10)
+      Rails.logger.info 'UPDATE BY QUERY:'
+      offset  = rand(User.count)
+      user_id = User.offset(offset).first.id
+
+      Benchmark.bm(5) do |x|
+        x.report('MONGO') { count.times {
+          total_sum = rand(1000)
+          Mongo::Policy.where(user_id: user_id).update_all('coverages.total_sum' => total_sum)
+        } }
+        x.report('MARIA') { count.times {
+          total_sum = rand(1000)
+          Policy.where(user_id: user_id).update_all("data = JSON_REPLACE(data, '$.coverages.total_sum', #{total_sum})")
+        } }
+      end
+    end
+
+    def select_test(count = 10)
+      Rails.logger.info 'SELECT:'
       mileage, fuel = 620000, 'Lucky'
 
       Benchmark.bm(5) do |x|
@@ -32,8 +64,30 @@ module Speed
       end
     end
 
-    def first(count = 100)
-      Rails.logger.info 'FIRST TEST'
+    def select_by_index_test(count = 10 )
+      Rails.logger.info 'SELECT BY INDEX:'
+      offset  = rand(User.count)
+      user_id = User.offset(offset).first.id
+
+      Benchmark.bm(5) do |x|
+        x.report('MONGO') { count.times { Mongo::Policy.where(user_id: user_id).first } }
+        x.report('MARIA') { count.times { Policy.where(user_id: user_id).first } }
+      end
+    end
+
+    def count_by_index_test(count = 10 )
+      Rails.logger.info 'COUNT BY INDEX:'
+      offset  = rand(User.count)
+      user_id = User.offset(offset).first.id
+
+      Benchmark.bm(5) do |x|
+        x.report('MONGO') { count.times { Mongo::Policy.where(user_id: user_id).count } }
+        x.report('MARIA') { count.times { Policy.where(user_id: user_id).count } }
+      end
+    end
+
+    def first_test(count = 10)
+      Rails.logger.info 'FIRST:'
       mileage, fuel = 620000, 'Lucky'
 
       Benchmark.bm(5) do |x|
@@ -46,8 +100,8 @@ module Speed
       end
     end
 
-    def count(count = 100)
-      Rails.logger.info 'COUNT  TEST'
+    def count_test(count = 10)
+      Rails.logger.info 'COUNT:'
       mileage, fuel = 620000, 'Lucky'
 
       Benchmark.bm(5) do |x|
@@ -61,7 +115,20 @@ module Speed
     end
 
     def complex
-
+      Rails.logger.info "START: Users: #{User.count}, Mongo: #{Mongo::Policy.count}, Maria: #{Policy.count}"
+      [1, 10, 100, 1000].each do|count|
+        Rails.logger.info "------------------------#{count}------------------------"
+        insert_test(count)
+        update_test(count)
+        update_by_query_test(count)
+        select_test(count)
+        select_by_index_test(count)
+        first_test(count)
+        count_test(count)
+        count_by_index_test(count)
+      end
+      Rails.logger.info "END: Users: #{User.count}, Mongo: #{Mongo::Policy.count}, Maria: #{Policy.count}"
+      Rails.logger.info ".........END........."
     end
 
     def generate_data(users = 10, policies = 10)
